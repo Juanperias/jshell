@@ -1,18 +1,28 @@
 pub mod parser;
+pub mod env;
 
-use std::path::{Path, PathBuf};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 
 use libc::{c_char, execve, fork, pid_t, waitpid};
+use once_cell::sync::Lazy;
 
 use std::ffi::CString;
 
-use crate::parser::parse;
-
+use crate::{env::{manage_local_vars, resolve_dep}, parser::parse};
 
 fn main() {
-    let expresion = "ls target";
-    let parsed = parse(expresion);
-    println!("{:?}", parsed);
+    let expresion = "HELLO=HELLO echo test";
+    let mut parsed = parse(expresion);
+
+
+    if parsed.command == String::new() {
+        manage_local_vars(&parsed.env); 
+    }
+    
+    
+    // PUT ENV VARS LIKE HOME, USER, SHELL, PATH, EDITOR, PS1
+    parsed.env.push(CString::new(format!("PATH={}", std::env::var("PATH").unwrap())).unwrap());
+
 
     let path = resolve_dep(&parsed.command).unwrap();
 
@@ -65,18 +75,4 @@ fn execute_cmd<F>(path: &str, args: &[*const c_char], env: &[*const c_char], chi
 pub struct Argv(pub *const *const c_char);
 pub struct Envp(pub *const *const c_char);
 
-fn resolve_dep(cmd: &str) -> Option<String> {
-    let path = std::env::var("PATH").expect("Path not exists");
 
-    for key in path.split(":") {
-        let v = format!("{key}/{cmd}");
-        let p = Path::new(&v);
-
-        if p.exists() {
-            return Some(v)
-        }
-    }
-
-
-    None
-}
