@@ -1,8 +1,8 @@
 use std::ffi::CString;
 
-use libc::{c_char, pid_t, execve, fork, waitpid, _exit};
+use libc::{_exit, c_char, execve, fork, pid_t, waitpid, WEXITSTATUS, WIFEXITED, WIFSIGNALED, WTERMSIG};
 
-use crate::{env::{manage_local_vars, resolve_dep}, parser::parse};
+use crate::{env::{manage_local_vars, resolve_dep, set_local_var}, parser::parse};
 
 
 
@@ -37,9 +37,17 @@ pub fn run_expr(expr: &str) {
         waitpid(pid, &mut status, 0);
     }
 
-    if status != 0 {
-        println!("command {} failed", &expr.command);
-    }
+    let exit = {
+        if WIFEXITED(status) {
+            WEXITSTATUS(status)
+        } else if WIFSIGNALED(status) {
+            128 + WTERMSIG(status)
+        } else {
+            status
+        }
+    };
+
+    set_local_var("?", exit.to_string()); 
 }
 
 

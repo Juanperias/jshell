@@ -90,6 +90,12 @@ pub fn parse(cmd: &str) -> Cmd {
             },
             Item::VarAssign(id, val) => {
                 if acc.0 == false {
+                    if &id == "?" {
+                        // todo: remove this panic
+                        panic!("invalid assing");
+                        
+                    }
+
                     acc.1.env.push(CString::new(format!("{id}={val}")).unwrap());
                 }
             }
@@ -97,17 +103,24 @@ pub fn parse(cmd: &str) -> Cmd {
                 if acc.0 == false {
                     acc.1.command = s;
                     acc.0 = true;
+                    return acc;
                 }    
+
+                acc.1.args.push(CString::new(s).unwrap());
             },
             Item::Iden(s) => {
                 if acc.0 == false {
                     acc.1.command = s;
                     acc.0 = true;
+                    return acc;
                 } 
+
+                acc.1.args.push(CString::new(s).unwrap());
             },
             Item::Var(s) => {
                 let val = var(&s).unwrap_or_default();
-
+    
+                               
                 if !acc.0 {
                     acc.1.command = val;
                 } else {

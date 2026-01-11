@@ -3,7 +3,12 @@ use std::{collections::HashMap, ffi::CString, path::Path, sync::Mutex};
 use once_cell::sync::Lazy;
 
 pub static LOCAL_VARS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
+    let mut map = HashMap::new();
+    
+    map.insert("?".to_string(), "0".to_string());
+
+    Mutex::new(map)
+
 });
 
 pub fn manage_local_vars(vars: &[CString]) {
@@ -27,7 +32,14 @@ pub fn var(var: &str) -> Option<String> {
 pub fn get_local_var(var: &str) -> Option<String> {
     let local_vars = LOCAL_VARS.lock().unwrap();
 
+
     local_vars.get(var).cloned()
+}
+
+pub fn set_local_var(var: &str, val: String) {
+    let mut local_vars = LOCAL_VARS.lock().unwrap();
+
+    *local_vars.get_mut(var).unwrap() = val;
 }
 
 pub fn resolve_dep(cmd: &str) -> Option<String> {
