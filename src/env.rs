@@ -11,7 +11,6 @@ pub fn manage_local_vars(vars: &[CString]) {
     for var_expr in vars {
         let var_expr = var_expr.as_c_str().to_str().unwrap();
         let (var_name, var_val) = {
-            println!("{var_expr}");
             let mut s = var_expr.splitn(2, "=");
             
             (s.next().unwrap(), s.next().unwrap())

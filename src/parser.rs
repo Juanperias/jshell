@@ -11,7 +11,7 @@ peg::parser! {
         
         pub rule program() -> RawProgram = _? items:item()** _ { RawProgram(items) }
 
-        rule item() -> Item = command() / var() / string() / identifier();
+        rule item() -> Item = command() / var() / var_assing() / string() / identifier();
     
         rule command() -> Item  = "./" command: identifier() {
             match command {
@@ -20,22 +20,27 @@ peg::parser! {
             }
         }
 
-        rule var() -> Item = "$" var: identifier() {
-            match var {
-                Item::Iden(s) => Item::Var(s),
-                _ => unreachable!()
-            }
-
+        rule var() -> Item = "$" var: identifier_raw() {
+            Item::Var(var)
         }
 
-        rule identifier() -> Item = n:$(['!' | '#'..='~']+) {
-            Item::Iden(n.to_string())
+        rule var_assing() -> Item = id: identifier_raw() "="  val: (string_raw() / identifier_raw()) {
+            Item::VarAssign(id, val)
         }
 
-        rule string() -> Item
+        rule identifier() -> Item = n:identifier_raw() { Item::Iden(n) }
+        rule identifier_raw() -> String = n:$(['!' | '#'..='<' | '>'..='~']+) { n.to_string() }
+
+        rule string() -> Item 
+            = n:string_raw()  {
+            Item::Str(n)
+        }
+
+
+        rule string_raw() -> String
             = q:$("\"" (['!' | '#'..='~' | ' '])* "\"") {
             let inner = &q[1..q.len()-1];
-            Item::Str(inner.to_string())
+            inner.to_string()
         }
 
     }
@@ -50,6 +55,8 @@ pub enum Item {
     Str(String),
     Command(String),
     Var(String),
+    VarAssign(String, String)
+
 }
 
 #[derive(Debug, Clone)]
@@ -69,59 +76,39 @@ pub struct Cmd {
 pub fn parse(cmd: &str) -> Cmd {
     let raw_parsed = command_parser::program(cmd).unwrap();
 
-    let (_, parsed) = raw_parsed.0.iter().fold((true, Cmd {
+    let (_, parsed) = raw_parsed.0.iter().fold((false, Cmd {
         command: String::new(),
         args: vec![],
         env: vec![],
     }), |mut acc, x| {
         match x.clone() {
             Item::Command(s) => {
-                if acc.0 {
-                  acc.1.command = s;
-                } else {
-                    acc.1.args.push(CString::new(s).unwrap());
+                if acc.0 == false {
+                    acc.1.command = s;
+                    acc.0 = true;
                 }
-                acc.0 = false;
             },
-            Item::Str(s) => {
-                if s.contains("=") && acc.0 {
-                        let mut var = s.splitn(2, "=");
-                    let var_name = var.next().unwrap();
-                    let var_val = var.next().unwrap();
-
-                //    println!("{var_name} {var_val}");
-
-
-                    // REMOVE THE UNWRAP
-                    acc.1.env.push(CString::new(s).unwrap());
-                } else  {
-                    if acc.0 == true {
-                        acc.1.command = s;
-                    } else {
-                        acc.1.args.push(CString::new(s).unwrap());
-                    }
-                    
-                    acc.0 = false;
+            Item::VarAssign(id, val) => {
+                if acc.0 == false {
+                    acc.1.env.push(CString::new(format!("{id}={val}")).unwrap());
                 }
+            }
+            Item::Str(s) => {
+                if acc.0 == false {
+                    acc.1.command = s;
+                    acc.0 = true;
+                }    
             },
             Item::Iden(s) => {
-                if s.contains("=") && acc.0 {
-                    acc.1.env.push(CString::new(s).unwrap());
-                }  else  {
-                    if acc.0 == true {
-                        acc.1.command = s;
-                    } else {
-                        acc.1.args.push(CString::new(s).unwrap());
-                    }
-                    
-                    acc.0 = false;
-                }
-               
+                if acc.0 == false {
+                    acc.1.command = s;
+                    acc.0 = true;
+                } 
             },
             Item::Var(s) => {
                 let val = var(&s).unwrap_or_default();
 
-                if acc.0 == true {
+                if !acc.0 {
                     acc.1.command = val;
                 } else {
                     acc.1.args.push(CString::new(val).unwrap());
