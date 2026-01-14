@@ -1,8 +1,8 @@
 pub mod build_in;
-pub mod posix;
 pub mod cmd;
 pub mod env;
 pub mod parser;
+pub mod posix;
 
 use std::{
     collections::HashMap,

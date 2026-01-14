@@ -5,8 +5,9 @@ use libc::{
 };
 
 use crate::{
-    env::{manage_local_vars, resolve_dep, set_local_var, Dep},
-    parser::parse, posix::POSIX_NOT_FOUND,
+    env::{Dep, manage_local_vars, resolve_dep, set_local_var},
+    parser::parse,
+    posix::POSIX_NOT_FOUND,
 };
 
 pub fn run_expr(expr: &str) {
@@ -18,7 +19,6 @@ pub fn run_expr(expr: &str) {
         return;
     }
 
-    
     let path = match resolve_dep(&expr.command) {
         Some(v) => v,
         None => {

@@ -2,7 +2,7 @@ use std::{collections::HashMap, ffi::CString, path::Path, sync::Mutex};
 
 use once_cell::sync::Lazy;
 
-use crate::build_in::{BuildIn, Exit};
+use crate::build_in::{BuildIn, Cd, Exit};
 
 pub static LOCAL_VARS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
     let mut map = HashMap::new();
@@ -46,7 +46,10 @@ pub fn resolve_dep(cmd: &str) -> Option<Dep> {
     match cmd {
         "exit" => {
             return Some(Dep::BuildIn(Box::new(Exit)));
-        }
+        },
+        "cd" => {
+            return Some(Dep::BuildIn(Box::new(Cd)));
+        },
         _ => {}
     }
 
