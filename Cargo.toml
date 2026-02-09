@@ -8,3 +8,4 @@ libc = "0.2.179"
 once_cell = "1.21.3"
 peg = "0.8.5"
 rustyline = { version = "17.0.2", features = ["derive", "with-file-history"] }
+thiserror = "2.0.18"

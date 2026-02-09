@@ -1,6 +1,9 @@
-use std::ffi::CString;
+use std::ffi::{CString, NulError};
 
-use crate::env::var;
+use peg::{error::ParseError, str::LineCol};
+use thiserror::Error;
+
+use crate::{cmd::CmdError, env::var};
 
 peg::parser! {
     grammar command_parser() for str {
@@ -71,70 +74,70 @@ pub struct Cmd {
     pub env: Vec<CString>,
 }
 
-pub fn parse(cmd: &str) -> Cmd {
-    let raw_parsed = command_parser::program(cmd).unwrap();
+pub fn parse(cmd: &str) -> Result<Cmd, ParserError> {
+    let raw_parsed = command_parser::program(cmd)?;
 
-    let (_, parsed) = raw_parsed.0.iter().fold(
-        (
-            false,
-            Cmd {
-                command: String::new(),
-                args: vec![],
-                env: vec![],
-            },
-        ),
-        |mut acc, x| {
+    let parsed: Result<Cmd, ParserError> = {
+        let mut flag = false;
+        let mut parsed = Cmd {
+            command: String::new(),
+            args: vec![],
+            env: vec![],
+        };
+
+        for x in raw_parsed.0.iter() {
             match x.clone() {
                 Item::Command(s) => {
-                    if acc.0 == false {
-                        acc.1.command = s;
-                        acc.0 = true;
+                    if !flag {
+                        parsed.command = s;
+                        flag = true;
                     }
                 }
                 Item::VarAssign(id, val) => {
-                    if acc.0 == false {
+                    if flag == false {
                         if &id == "?" {
-                            // todo: remove this panic
-                            panic!("invalid assing");
+                            return Err(ParserError::NoMatches(id));
                         }
 
-                        acc.1.env.push(CString::new(format!("{id}={val}")).unwrap());
+                        parsed
+                            .env
+                            .push(CString::new(format!("{id}={val}"))?);
                     }
                 }
                 Item::Str(s) => {
-                    if acc.0 == false {
-                        acc.1.command = s;
-                        acc.0 = true;
-                        return acc;
+                    if flag == false {
+                        parsed.command = s;
+                        flag = true;
+                        continue;
                     }
 
-                    acc.1.args.push(CString::new(s).unwrap());
+                    parsed.args.push(CString::new(s)?);
                 }
                 Item::Iden(s) => {
-                    if acc.0 == false {
-                        acc.1.command = s;
-                        acc.0 = true;
-                        return acc;
+                    if flag == false {
+                        parsed.command = s;
+                        flag = true;
+                        continue;
                     }
 
-                    acc.1.args.push(CString::new(s).unwrap());
+                    parsed.args.push(CString::new(s)?);
                 }
                 Item::Var(s) => {
                     let val = var(&s).unwrap_or_default();
 
-                    if !acc.0 {
-                        acc.1.command = val;
+                    if !flag {
+                        parsed.command = val;
                     } else {
-                        acc.1.args.push(CString::new(val).unwrap());
+                        parsed.args.push(CString::new(val)?);
                     }
 
-                    acc.0 = false;
+                    flag = false;
                 }
             }
+        }
 
-            acc
-        },
-    );
+        Ok(parsed)
+    };
 
     parsed
 }
@@ -144,4 +147,16 @@ pub enum CmdExpr {
     Command(String),
     Env(EnvInfo),
     Arg(String),
+}
+
+#[derive(Error, Debug)]
+pub enum ParserError {
+    #[error("parse Error {0}")]
+    ParseError(#[from] ParseError<LineCol>),
+
+    #[error("no matches found {0}")]
+    NoMatches(String),
+
+    #[error("cstring error, nul error: {0}")]
+    NulError(#[from] NulError),
 }

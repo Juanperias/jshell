@@ -1,37 +1,57 @@
-use std::ffi::CString;
+use std::{env::VarError, ffi::{CString, NulError}};
 
 use libc::{
     _exit, WEXITSTATUS, WIFEXITED, WIFSIGNALED, WTERMSIG, c_char, execve, fork, pid_t, waitpid,
 };
+use thiserror::Error;
 
 use crate::{
-    env::{Dep, manage_local_vars, resolve_dep, set_local_var},
-    parser::parse,
-    posix::POSIX_NOT_FOUND,
+    build_in::BuildInError, env::{manage_local_vars, resolve_dep, set_exit_status, set_local_var, Dep}, parser::{parse, ParserError}, posix::POSIX_NOT_FOUND
 };
 
-pub fn run_expr(expr: &str) {
-    let mut expr = parse(expr);
+#[derive(Debug, Error)]
+pub enum CmdError {
+    #[error("command not found: {0}")]
+    CommandNotFound(String),
 
-    if &expr.command == "" {
-        manage_local_vars(&expr.env);
+    #[error("var not exists")]
+    VarError(#[from] VarError),
 
-        return;
+    #[error("parser error: {0}")]
+    ParserError(#[from] ParserError),
+
+    #[error("cstring error, nul error: {0}")]
+    NulError(#[from] NulError),
+
+    #[error("build in internal error: {0}")]
+    BuildInError(#[from] BuildInError),
+
+    #[error("fork error")]
+    ForkError,
+
+    #[error("env error: {0}")]
+    EnvError(#[from] crate::env::EnvError),
+}
+
+pub fn run_expr(expr: &str) -> Result<(), CmdError> {
+    let mut expr = parse(expr)?;
+
+    if expr.command.is_empty() {
+        manage_local_vars(&expr.env)?;
+
+        return Ok(());
     }
 
-    let path = match resolve_dep(&expr.command) {
-        Some(v) => v,
-        None => {
-            println!("Command {} not found", &expr.command);
-            set_local_var("?", POSIX_NOT_FOUND.to_string());
-            return;
-        }
-    };
+    let path = resolve_dep(&expr.command).ok_or_else(|| {
+        set_exit_status(POSIX_NOT_FOUND);
+
+        CmdError::CommandNotFound(expr.command)
+    })?;
 
     expr.env
-        .push(CString::new(format!("PATH={}", std::env::var("PATH").unwrap())).unwrap());
+        .push(CString::new(format!("PATH={}", std::env::var("PATH")?))?);
     expr.env
-        .push(CString::new(format!("TERM={}", std::env::var("TERM").unwrap())).unwrap());
+        .push(CString::new(format!("TERM={}", std::env::var("TERM")?))?);
 
     match path {
         Dep::Path(s) => {
@@ -46,7 +66,7 @@ pub fn run_expr(expr: &str) {
                 .map(|x| x.as_ptr() as *const c_char)
                 .collect();
 
-            let pid = execute_cmd(&s, &args, &env);
+            let pid = execute_cmd(&s, &args, &env)?;
 
             let mut status = 0;
 
@@ -64,18 +84,20 @@ pub fn run_expr(expr: &str) {
                 }
             };
 
-            set_local_var("?", exit.to_string());
+            set_exit_status(exit);
         }
         Dep::BuildIn(build_in) => {
-            let status = build_in.run(&expr.args, &expr.env);
+            let status = build_in.run(&expr.args, &expr.env)?;
 
-            set_local_var("?", status.to_string());
+            set_exit_status(status);
         }
     }
+
+    Ok(())
 }
 
-fn execute_cmd(path: &str, args: &[*const c_char], env: &[*const c_char]) -> pid_t {
-    let c_path = CString::new(path).unwrap();
+fn execute_cmd(path: &str, args: &[*const c_char], env: &[*const c_char]) -> Result<pid_t, CmdError> {
+    let c_path = CString::new(path)?;
     let mut argv = vec![c_path.as_ptr()];
     argv.extend_from_slice(args);
     argv.push(std::ptr::null());
@@ -86,6 +108,10 @@ fn execute_cmd(path: &str, args: &[*const c_char], env: &[*const c_char]) -> pid
     unsafe {
         let pid = fork();
 
+        if pid < 0 {
+            return Err(CmdError::ForkError);
+        }
+
         if pid == 0 {
             execve(
                 c_path.as_ptr(),
@@ -95,7 +121,7 @@ fn execute_cmd(path: &str, args: &[*const c_char], env: &[*const c_char]) -> pid
             _exit(-1);
         }
 
-        pid
+        Ok(pid)
     }
 }
 

@@ -22,12 +22,14 @@ use crate::{
     parser::parse,
 };
 
-fn main() {
-    let mut rl = DefaultEditor::new().unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut rl = DefaultEditor::new()?;
 
     loop {
-        let readline = rl.readline(">> ").unwrap();
+        let readline = rl.readline(">> ")?;
 
-        run_expr(&readline);
+        if let Err(err) = run_expr(&readline) {
+            eprintln!("jshell: {}", err);
+        }
     }
 }
