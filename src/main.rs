@@ -12,7 +12,7 @@ use std::{
 
 use libc::{c_char, execve, fork, pid_t, waitpid};
 use once_cell::sync::Lazy;
-use rustyline::{DefaultEditor, config::Configurer};
+use rustyline::{config::Configurer, error::ReadlineError, DefaultEditor};
 
 use std::ffi::CString;
 
@@ -26,10 +26,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = DefaultEditor::new()?;
 
     loop {
-        let readline = rl.readline(">> ")?;
+        let readline = match rl.readline(">> ") {
+            Ok(line) => line,
+            Err(ReadlineError::Interrupted) => { 
+                continue;
+            },
+            Err(ReadlineError::Eof) => { 
+                println!("Bye, Bye! :)");
+                break;
+            }, 
+            Err(err) => {
+                eprintln!("{err}");
+                continue;
+            },
+        };
 
         if let Err(err) = run_expr(&readline) {
             eprintln!("jshell: {}", err);
         }
     }
+
+    Ok(())
 }
