@@ -14,7 +14,7 @@ peg::parser! {
 
         pub rule program() -> RawProgram = _? items:item()** _ { RawProgram(items) }
 
-        rule item() -> Item = command() / var() / var_assing() / string() / identifier();
+        rule item() -> Item = pipe() / command() / var() / var_assing() / string() / identifier();
 
         rule command() -> Item  = "./" command: identifier() {
             match command {
@@ -29,6 +29,10 @@ peg::parser! {
 
         rule var_assing() -> Item = id: identifier_raw() "="  val: (string_raw() / identifier_raw()) {
             Item::VarAssign(id, val)
+        }
+
+        rule pipe() -> Item = "|" {
+            Item::PipeOp
         }
 
         rule identifier() -> Item = n:identifier_raw() { Item::Iden(n) }
@@ -59,6 +63,7 @@ pub enum Item {
     Command(String),
     Var(String),
     VarAssign(String, String),
+    PipeOp
 }
 
 #[derive(Debug, Clone)]
@@ -77,14 +82,16 @@ pub struct Cmd {
 pub fn parse(cmd: &str) -> Result<Cmd, ParserError> {
     let raw_parsed = command_parser::program(cmd)?;
 
-    let parsed: Result<Cmd, ParserError> = {
+    let parsed: Result<Vec<Cmd>, ParserError> = {
         let mut flag = false;
-        let mut parsed = Cmd {
+        let mut commands = vec![Cmd {
             command: String::new(),
             args: vec![],
             env: vec![],
-        };
+        }];
+        let mut parsed = commands.last_mut().expect("jshell internal error!");
 
+        
         for x in raw_parsed.0.iter() {
             match x.clone() {
                 Item::Command(s) => {
@@ -132,14 +139,29 @@ pub fn parse(cmd: &str) -> Result<Cmd, ParserError> {
                     }
 
                     flag = false;
-                }
+                },
+                Item::PipeOp => {
+                    flag = false;
+                    commands.push(Cmd {
+            command: String::new(),
+            args: vec![],
+            env: vec![],
+        });
+                    parsed = commands.last_mut().unwrap();
+                },
             }
         }
-
-        Ok(parsed)
+       
+        Ok(commands)
     };
 
-    parsed
+    println!("{:?}", parsed);
+
+    Ok(Cmd {
+        command: String::new(),
+        args: vec![],
+        env: vec![]
+    })
 }
 
 #[derive(Debug)]
